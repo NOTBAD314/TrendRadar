@@ -3435,7 +3435,7 @@ def send_to_feishu(
     proxy_url: Optional[str] = None,
     mode: str = "daily",
 ) -> bool:
-    """发送到飞书（支持分批发送）"""
+    """发送到飞书（支持分批发送，已升级为卡片消息）"""
     headers = {"Content-Type": "application/json"}
     proxies = None
     if proxy_url:
@@ -3460,30 +3460,49 @@ def send_to_feishu(
         )
 
         # 添加批次标识
+        header_text = ""
         if len(batches) > 1:
-            batch_header = f"**[第 {i}/{len(batches)} 批次]**\n\n"
-            # 将批次标识插入到适当位置（在统计标题之后）
-            if "📊 **热点词汇统计**" in batch_content:
-                batch_content = batch_content.replace(
-                    "📊 **热点词汇统计**\n\n", f"📊 **热点词汇统计** {batch_header}"
-                )
-            else:
-                # 如果没有统计标题，直接在开头添加
-                batch_content = batch_header + batch_content
+            header_text = f" [第 {i}/{len(batches)} 批次]"
 
-        total_titles = sum(
-            len(stat["titles"]) for stat in report_data["stats"] if stat["count"] > 0
-        )
-        now = get_beijing_time()
+        # 构造卡片消息 Payload
+        # 注意：这里将 text 类型的 content 放入卡片的 lark_md 元素中
+        card_content = {
+            "config": {
+                "wide_screen_mode": True
+            },
+            "header": {
+                "title": {
+                    "tag": "plain_text",
+                    "content": f"TrendRadar {report_type}{header_text}"
+                },
+                "template": "blue"  # 标题颜色
+            },
+            "elements": [
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": batch_content  # 这里的内容支持 <font> 和 **
+                    }
+                },
+                {
+                    "tag": "hr"
+                },
+                {
+                    "tag": "note",
+                    "elements": [
+                        {
+                            "tag": "plain_text",
+                            "content": f"来自 TrendRadar • {get_beijing_time().strftime('%H:%M:%S')}"
+                        }
+                    ]
+                }
+            ]
+        }
 
         payload = {
-            "msg_type": "text",
-            "content": {
-                "total_titles": total_titles,
-                "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
-                "report_type": report_type,
-                "text": batch_content,
-            },
+            "msg_type": "interactive",
+            "card": card_content
         }
 
         try:
